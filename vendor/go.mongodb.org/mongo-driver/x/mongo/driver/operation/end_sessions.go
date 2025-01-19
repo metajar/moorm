@@ -11,6 +11,7 @@ import (
 	"errors"
 
 	"go.mongodb.org/mongo-driver/event"
+	"go.mongodb.org/mongo-driver/internal/driverutil"
 	"go.mongodb.org/mongo-driver/mongo/description"
 	"go.mongodb.org/mongo-driver/x/bsonx/bsoncore"
 	"go.mongodb.org/mongo-driver/x/mongo/driver"
@@ -19,15 +20,16 @@ import (
 
 // EndSessions performs an endSessions operation.
 type EndSessions struct {
-	sessionIDs bsoncore.Document
-	session    *session.Client
-	clock      *session.ClusterClock
-	monitor    *event.CommandMonitor
-	crypt      driver.Crypt
-	database   string
-	deployment driver.Deployment
-	selector   description.ServerSelector
-	serverAPI  *driver.ServerAPIOptions
+	authenticator driver.Authenticator
+	sessionIDs    bsoncore.Document
+	session       *session.Client
+	clock         *session.ClusterClock
+	monitor       *event.CommandMonitor
+	crypt         driver.Crypt
+	database      string
+	deployment    driver.Deployment
+	selector      description.ServerSelector
+	serverAPI     *driver.ServerAPIOptions
 }
 
 // NewEndSessions constructs and returns a new EndSessions.
@@ -42,7 +44,7 @@ func (es *EndSessions) processResponse(driver.ResponseInfo) error {
 	return err
 }
 
-// Execute runs this operations and returns an error if the operaiton did not execute successfully.
+// Execute runs this operations and returns an error if the operation did not execute successfully.
 func (es *EndSessions) Execute(ctx context.Context) error {
 	if es.deployment == nil {
 		return errors.New("the EndSessions operation must have a Deployment set before Execute can be called")
@@ -59,18 +61,20 @@ func (es *EndSessions) Execute(ctx context.Context) error {
 		Deployment:        es.deployment,
 		Selector:          es.selector,
 		ServerAPI:         es.serverAPI,
-	}.Execute(ctx, nil)
+		Name:              driverutil.EndSessionsOp,
+		Authenticator:     es.authenticator,
+	}.Execute(ctx)
 
 }
 
-func (es *EndSessions) command(dst []byte, desc description.SelectedServer) ([]byte, error) {
+func (es *EndSessions) command(dst []byte, _ description.SelectedServer) ([]byte, error) {
 	if es.sessionIDs != nil {
 		dst = bsoncore.AppendArrayElement(dst, "endSessions", es.sessionIDs)
 	}
 	return dst, nil
 }
 
-// sessionIDs specify the sessions to be expired.
+// SessionIDs specifies the sessions to be expired.
 func (es *EndSessions) SessionIDs(sessionIDs bsoncore.Document) *EndSessions {
 	if es == nil {
 		es = new(EndSessions)
@@ -157,5 +161,15 @@ func (es *EndSessions) ServerAPI(serverAPI *driver.ServerAPIOptions) *EndSession
 	}
 
 	es.serverAPI = serverAPI
+	return es
+}
+
+// Authenticator sets the authenticator to use for this operation.
+func (es *EndSessions) Authenticator(authenticator driver.Authenticator) *EndSessions {
+	if es == nil {
+		es = new(EndSessions)
+	}
+
+	es.authenticator = authenticator
 	return es
 }
